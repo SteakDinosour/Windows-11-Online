@@ -1,0 +1,11 @@
+{
+  "name": "Windows 11 Online",
+  "description": "Authentic, full-featured Windows 11 operating system experience running directly in your browser with Fluent Design, virtual filesystem, multitasking, and built-in apps.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
