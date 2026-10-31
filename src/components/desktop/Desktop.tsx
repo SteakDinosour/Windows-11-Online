@@ -31,25 +31,6 @@ export const Desktop: React.FC = () => {
   const [renameValue, setRenameValue] = useState<string>('');
   const [propertiesItem, setPropertiesItem] = useState<FileSystemItem | null>(null);
 
-  // Context Menu State
-  const [contextMenu, setContextMenu] = useState<{
-    visible: boolean;
-    x: number;
-    y: number;
-    targetItem?: DesktopShortcut;
-  }>({ visible: false, x: 0, y: 0 });
-
-  // Rubber-band selection state
-  const [selectionBox, setSelectionBox] = useState<{
-    active: boolean;
-    startX: number;
-    startY: number;
-    currentX: number;
-    currentY: number;
-  }>({ active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 });
-
-  const desktopRef = useRef<HTMLDivElement>(null);
-
   // Reload desktop files from filesystem
   const reloadFiles = useCallback(() => {
     setDesktopFiles(fileSystem.getDesktopItems());
@@ -135,6 +116,97 @@ export const Desktop: React.FC = () => {
   }));
 
   const allShortcuts = [...systemShortcuts, ...fileShortcuts];
+
+  // Free-moving icon positions state
+  const [iconPositions, setIconPositions] = useState<Record<string, { x: number; y: number }>>(() => {
+    try {
+      const saved = localStorage.getItem('win11_desktop_icon_positions_v1');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
+
+  const draggingRef = useRef<{ id: string; startX: number; startY: number; initialX: number; initialY: number } | null>(null);
+
+  // Initialize missing icon positions in default grid columns
+  useEffect(() => {
+    const posMap = { ...iconPositions };
+    let changed = false;
+    allShortcuts.forEach((item, index) => {
+      if (!posMap[item.id]) {
+        const col = Math.floor(index / 6);
+        const row = index % 6;
+        posMap[item.id] = {
+          x: 24 + col * 92,
+          y: 24 + row * 96,
+        };
+        changed = true;
+      }
+    });
+    if (changed) {
+      setIconPositions(posMap);
+      try {
+        localStorage.setItem('win11_desktop_icon_positions_v1', JSON.stringify(posMap));
+      } catch {}
+    }
+  }, [allShortcuts.length]);
+
+  const handleIconMouseDown = (e: React.MouseEvent, id: string) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    const currentPos = iconPositions[id] || { x: 24, y: 24 };
+    draggingRef.current = {
+      id,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialX: currentPos.x,
+      initialY: currentPos.y,
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!draggingRef.current) return;
+      const dx = moveEvent.clientX - draggingRef.current.startX;
+      const dy = moveEvent.clientY - draggingRef.current.startY;
+      const newX = Math.max(10, Math.min(window.innerWidth - 90, draggingRef.current.initialX + dx));
+      const newY = Math.max(10, Math.min(window.innerHeight - 120, draggingRef.current.initialY + dy));
+
+      setIconPositions(prev => {
+        const next = { ...prev, [draggingRef.current!.id]: { x: newX, y: newY } };
+        try {
+          localStorage.setItem('win11_desktop_icon_positions_v1', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    };
+
+    const handleMouseUp = () => {
+      draggingRef.current = null;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    targetItem?: DesktopShortcut;
+  }>({ visible: false, x: 0, y: 0 });
+
+  // Rubber-band selection state
+  const [selectionBox, setSelectionBox] = useState<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  }>({ active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 });
+
+  const desktopRef = useRef<HTMLDivElement>(null);
 
   // Right-click desktop or item handler
   const handleContextMenu = (e: React.MouseEvent, item?: DesktopShortcut) => {
@@ -328,20 +400,26 @@ export const Desktop: React.FC = () => {
         }}
       />
 
-      {/* Desktop Grid of Icons */}
-      <div className="relative z-[10] p-4 flex flex-col flex-wrap content-start gap-3 h-[calc(100vh-48px)] w-fit pointer-events-auto">
+      {/* Desktop Draggable Icons */}
+      <div className="absolute inset-0 z-[10] pointer-events-none">
         {allShortcuts.map(item => {
           const isSelected = selectedIds.includes(item.id);
           const isRenaming = renamingId === item.id;
+          const pos = iconPositions[item.id] || { x: 24, y: 24 };
 
           return (
             <div
               key={item.id}
-              className={`group relative w-20 p-2 flex flex-col items-center justify-start rounded-md transition-all cursor-pointer ${
+              className={`absolute group w-20 p-2 flex flex-col items-center justify-start rounded-md transition-shadow cursor-pointer pointer-events-auto ${
                 isSelected
-                  ? 'bg-blue-500/25 ring-1 ring-blue-400/50 shadow-sm'
+                  ? 'bg-blue-500/25 ring-1 ring-blue-400/50 shadow-sm z-20'
                   : 'hover:bg-white/15 dark:hover:bg-white/10'
               }`}
+              style={{
+                left: `${pos.x}px`,
+                top: `${pos.y}px`,
+              }}
+              onMouseDown={e => handleIconMouseDown(e, item.id)}
               onClick={e => {
                 e.stopPropagation();
                 if (e.ctrlKey) {
@@ -503,18 +581,6 @@ export const Desktop: React.FC = () => {
                 <span className="text-[10px] text-neutral-400">F5</span>
               </button>
 
-              <div className="h-px bg-neutral-200 dark:bg-neutral-700 my-1" />
-
-              <button
-                className="w-full flex items-center gap-2 px-3 py-1.5 rounded hover:bg-neutral-200/70 dark:hover:bg-neutral-700/60 transition-colors text-left"
-                onClick={() => {
-                  setPropertiesItem({ id: 'desktop', name: 'Desktop', type: 'folder', parentId: null, size: 0, updatedAt: new Date().toISOString().split('T')[0], icon: 'folder' });
-                  setContextMenu({ visible: false, x: 0, y: 0 });
-                }}
-              >
-                <WinIcon name="settings" size={14} />
-                <span>Properties</span>
-              </button>
               <div className="h-px bg-neutral-200 dark:bg-neutral-700 my-1" />
 
               {/* New submenu */}

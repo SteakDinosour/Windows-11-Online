@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { PropertiesDialog } from '../common/PropertiesDialog';
-import { saveToComputer } from '../../services/diskIO';
 import { useOS } from '../../context/OSContext';
 import { fileSystem } from '../../services/fileSystem';
 import { FileSystemItem } from '../../types/os';
@@ -25,14 +23,13 @@ export const FileExplorerApp: React.FC<FileExplorerProps> = ({ payload }) => {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState<string>('');
   const [items, setItems] = useState<FileSystemItem[]>([]);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; item: FileSystemItem | null } | null>(null);
-  const [propsItem, setPropsItem] = useState<FileSystemItem | null>(null);
-
-  useEffect(() => {
-    const close = () => setCtxMenu(null);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, []);
+  const [propertiesItem, setPropertiesItem] = useState<FileSystemItem | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    targetItem?: FileSystemItem;
+  }>({ visible: false, x: 0, y: 0 });
 
   // Reload current folder items
   const loadFolder = useCallback(() => {
@@ -97,6 +94,11 @@ export const FileExplorerApp: React.FC<FileExplorerProps> = ({ payload }) => {
 
   // Item Open Handler
   const handleOpenItem = (item: FileSystemItem) => {
+    if (item.inRecycleBin) {
+      fileSystem.restoreItem(item.id);
+      loadFolder();
+      return;
+    }
     if (item.type === 'folder') {
       navigateTo(item.id);
     } else {
@@ -140,6 +142,18 @@ export const FileExplorerApp: React.FC<FileExplorerProps> = ({ payload }) => {
     setSelectedIds([]);
   };
 
+  const handleRestoreSelected = () => {
+    selectedIds.forEach(id => fileSystem.restoreItem(id));
+    loadFolder();
+    setSelectedIds([]);
+  };
+
+  const handleRestoreAll = () => {
+    fileSystem.restoreAll();
+    loadFolder();
+    setSelectedIds([]);
+  };
+
   // Rename commit
   const handleRenameSubmit = (id: string) => {
     if (renameValue.trim()) {
@@ -147,6 +161,22 @@ export const FileExplorerApp: React.FC<FileExplorerProps> = ({ payload }) => {
       loadFolder();
     }
     setRenamingId(null);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, item?: FileSystemItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const mouseX = Math.min(e.clientX, window.innerWidth - 220);
+    const mouseY = Math.min(e.clientY, window.innerHeight - 250);
+    setContextMenu({
+      visible: true,
+      x: mouseX,
+      y: mouseY,
+      targetItem: item,
+    });
+    if (item && !selectedIds.includes(item.id)) {
+      setSelectedIds([item.id]);
+    }
   };
 
   // Filtered items
@@ -167,63 +197,17 @@ export const FileExplorerApp: React.FC<FileExplorerProps> = ({ payload }) => {
     { id: 'videos', name: 'Videos', icon: 'video' },
   ];
 
-  const inRecycle = currentFolderId === 'recycle-bin';
-  const currentFolder = currentFolderId ? fileSystem.getItemById(currentFolderId) : null;
-  const menuTarget = ctxMenu?.item ?? null;
-  const menuItemClass = "w-full flex items-center gap-2 px-3 py-1.5 rounded hover:bg-neutral-200/70 dark:hover:bg-neutral-700/60 transition-colors text-left";
-  const ctxOverlay = (
-    <>
-      {ctxMenu && (
-        <div
-          className="fixed z-[9999] min-w-56 p-1.5 rounded-lg bg-white dark:bg-[#2b2b2b] border border-neutral-300 dark:border-neutral-700 shadow-xl text-xs"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
-          onClick={e => e.stopPropagation()}
-        >
-          {menuTarget ? (
-            <>
-              <button className={menuItemClass} onClick={() => { handleOpenItem(menuTarget); setCtxMenu(null); }}>
-                <WinIcon name="folder" size={14} /><span>Open</span>
-              </button>
-              {inRecycle && (
-                <button className={menuItemClass} onClick={() => { fileSystem.restoreItem(menuTarget.id); loadFolder(); setCtxMenu(null); }}>
-                  <WinIcon name="refresh" size={14} /><span>Restore to original location</span>
-                </button>
-              )}
-              {menuTarget.type === 'file' && (
-                <button className={menuItemClass} onClick={() => { saveToComputer(menuTarget.name, menuTarget.content || ''); setCtxMenu(null); }}>
-                  <WinIcon name="download" size={14} /><span>Save to my computer</span>
-                </button>
-              )}
-              <div className="h-px bg-neutral-200 dark:bg-neutral-700 my-1" />
-              <button className={menuItemClass} onClick={() => { setPropsItem(menuTarget); setCtxMenu(null); }}>
-                <WinIcon name="settings" size={14} /><span>Properties</span>
-              </button>
-            </>
-          ) : (
-            <>
-              <button className={menuItemClass} onClick={() => { loadFolder(); setCtxMenu(null); }}>
-                <WinIcon name="refresh" size={14} /><span>Refresh</span>
-              </button>
-              <div className="h-px bg-neutral-200 dark:bg-neutral-700 my-1" />
-              <button className={menuItemClass} onClick={() => { setPropsItem(currentFolder ?? { id: 'this-pc', name: 'This PC', type: 'folder', parentId: null, size: 0, updatedAt: '', icon: 'folder' }); setCtxMenu(null); }}>
-                <WinIcon name="settings" size={14} /><span>Properties</span>
-              </button>
-            </>
-          )}
-        </div>
-      )}
-      {propsItem && <PropertiesDialog item={propsItem} onClose={() => setPropsItem(null)} />}
-    </>
-  );
-
   return (
-    <div className="flex flex-col h-full w-full bg-neutral-50 dark:bg-[#191919] text-slate-800 dark:text-slate-100 select-none" onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: null }); }}>
-      {ctxOverlay}
+    <div
+      className="flex flex-col h-full w-full bg-neutral-50 dark:bg-[#191919] text-slate-800 dark:text-slate-100 select-none relative"
+      onClick={() => setContextMenu({ visible: false, x: 0, y: 0 })}
+      onContextMenu={e => handleContextMenu(e)}
+    >
       {/* Top Tabs Bar */}
       <div className="h-9 px-3 flex items-center gap-1 bg-neutral-100 dark:bg-[#202020] border-b border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-t-lg bg-neutral-50 dark:bg-[#191919] border-t border-x border-neutral-200 dark:border-neutral-800 text-xs font-semibold max-w-44 truncate">
           <WinIcon name="folder" size={14} />
-          <span className="truncate">{currentFolderId ? fileSystem.getItemById(currentFolderId)?.name || 'Folder' : 'This PC'}</span>
+          <span className="truncate">{currentFolderId === 'recycle-bin' ? 'Recycle Bin' : currentFolderId ? fileSystem.getItemById(currentFolderId)?.name || 'Folder' : 'This PC'}</span>
         </div>
       </div>
 
@@ -275,7 +259,7 @@ export const FileExplorerApp: React.FC<FileExplorerProps> = ({ payload }) => {
           <WinIcon name="search" size={14} className="text-neutral-400" />
           <input
             type="text"
-            placeholder={`Search ${currentFolderId ? fileSystem.getItemById(currentFolderId)?.name || 'Folder' : 'This PC'}...`}
+            placeholder={`Search...`}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="bg-transparent outline-none w-full text-slate-800 dark:text-slate-100"
@@ -285,31 +269,62 @@ export const FileExplorerApp: React.FC<FileExplorerProps> = ({ payload }) => {
 
       {/* Action Command Bar */}
       <div className="h-10 px-3 flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 text-xs">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={handleNewFolder}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 font-medium"
-          >
-            <WinIcon name="folder-plus" size={14} className="text-amber-500" />
-            <span>New folder</span>
-          </button>
-          <button
-            onClick={handleNewTextDoc}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 font-medium"
-          >
-            <WinIcon name="file-text" size={14} className="text-sky-500" />
-            <span>New text doc</span>
-          </button>
-          <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-700 mx-1" />
-          <button
-            onClick={handleDelete}
-            disabled={selectedIds.length === 0}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 font-medium disabled:opacity-30 text-red-500"
-          >
-            <WinIcon name="trash-2" size={14} />
-            <span>Delete</span>
-          </button>
-        </div>
+        {currentFolderId === 'recycle-bin' ? (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleRestoreSelected}
+              disabled={selectedIds.length === 0}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 font-medium disabled:opacity-30 text-blue-600 dark:text-blue-400"
+            >
+              <WinIcon name="refresh" size={14} />
+              <span>Restore selected</span>
+            </button>
+            <button
+              onClick={handleRestoreAll}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 font-medium text-blue-600 dark:text-blue-400"
+            >
+              <WinIcon name="refresh" size={14} />
+              <span>Restore all items</span>
+            </button>
+            <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-700 mx-1" />
+            <button
+              onClick={() => {
+                fileSystem.emptyRecycleBin();
+                loadFolder();
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 font-medium text-red-500"
+            >
+              <WinIcon name="trash-2" size={14} />
+              <span>Empty Recycle Bin</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleNewFolder}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 font-medium"
+            >
+              <WinIcon name="folder-plus" size={14} className="text-amber-500" />
+              <span>New folder</span>
+            </button>
+            <button
+              onClick={handleNewTextDoc}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 font-medium"
+            >
+              <WinIcon name="file-text" size={14} className="text-sky-500" />
+              <span>New text doc</span>
+            </button>
+            <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-700 mx-1" />
+            <button
+              onClick={handleDelete}
+              disabled={selectedIds.length === 0}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 font-medium disabled:opacity-30 text-red-500"
+            >
+              <WinIcon name="trash-2" size={14} />
+              <span>Delete</span>
+            </button>
+          </div>
+        )}
 
         {/* View Mode Switcher */}
         <div className="flex items-center gap-1 text-neutral-500">
@@ -419,7 +434,7 @@ export const FileExplorerApp: React.FC<FileExplorerProps> = ({ payload }) => {
                     key={item.id}
                     onClick={() => setSelectedIds([item.id])}
                     onDoubleClick={() => handleOpenItem(item)}
-                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSelectedIds([item.id]); setCtxMenu({ x: e.clientX, y: e.clientY, item }); }}
+                    onContextMenu={e => handleContextMenu(e, item)}
                     className={`flex flex-col items-center p-2 rounded-lg cursor-pointer transition-all ${
                       isSelected
                         ? 'bg-blue-500/20 ring-1 ring-blue-500/50'
@@ -471,7 +486,7 @@ export const FileExplorerApp: React.FC<FileExplorerProps> = ({ payload }) => {
                       key={item.id}
                       onClick={() => setSelectedIds([item.id])}
                       onDoubleClick={() => handleOpenItem(item)}
-                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSelectedIds([item.id]); setCtxMenu({ x: e.clientX, y: e.clientY, item }); }}
+                      onContextMenu={e => handleContextMenu(e, item)}
                       className={`cursor-pointer transition-colors ${
                         isSelected
                           ? 'bg-blue-500/20'
@@ -499,6 +514,165 @@ export const FileExplorerApp: React.FC<FileExplorerProps> = ({ payload }) => {
         <span>{displayItems.length} items</span>
         <span className="font-mono tabular-nums">{selectedIds.length > 0 ? `${selectedIds.length} item selected` : ''}</span>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu.visible && (
+        <div
+          className="absolute z-[9999] min-w-48 p-1 rounded-lg mica-surface border border-neutral-300 dark:border-neutral-700 win11-flyout-shadow text-xs text-slate-800 dark:text-slate-100 animate-win11-open"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={e => e.stopPropagation()}
+        >
+          {contextMenu.targetItem ? (
+            <>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded hover:bg-neutral-200/70 dark:hover:bg-neutral-700/60 text-left font-medium"
+                onClick={() => {
+                  handleOpenItem(contextMenu.targetItem!);
+                  setContextMenu({ visible: false, x: 0, y: 0 });
+                }}
+              >
+                <WinIcon name={contextMenu.targetItem.inRecycleBin ? 'refresh' : 'folder'} size={14} />
+                <span>{contextMenu.targetItem.inRecycleBin ? 'Restore' : 'Open'}</span>
+              </button>
+
+              {contextMenu.targetItem.inRecycleBin && (
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-1.5 rounded hover:bg-neutral-200/70 dark:hover:bg-neutral-700/60 text-left text-blue-500"
+                  onClick={() => {
+                    fileSystem.restoreItem(contextMenu.targetItem!.id);
+                    loadFolder();
+                    setContextMenu({ visible: false, x: 0, y: 0 });
+                  }}
+                >
+                  <WinIcon name="refresh" size={14} />
+                  <span>Restore to Disk</span>
+                </button>
+              )}
+
+              <div className="h-px bg-neutral-200 dark:bg-neutral-700 my-1" />
+
+              <button
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded hover:bg-neutral-200/70 dark:hover:bg-neutral-700/60 text-left text-red-500"
+                onClick={() => {
+                  fileSystem.deleteItem(contextMenu.targetItem!.id);
+                  loadFolder();
+                  setContextMenu({ visible: false, x: 0, y: 0 });
+                }}
+              >
+                <WinIcon name="trash-2" size={14} />
+                <span>Delete</span>
+              </button>
+
+              <div className="h-px bg-neutral-200 dark:bg-neutral-700 my-1" />
+
+              <button
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded hover:bg-neutral-200/70 dark:hover:bg-neutral-700/60 text-left"
+                onClick={() => {
+                  setPropertiesItem(contextMenu.targetItem!);
+                  setContextMenu({ visible: false, x: 0, y: 0 });
+                }}
+              >
+                <WinIcon name="settings" size={14} />
+                <span>Properties</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded hover:bg-neutral-200/70 dark:hover:bg-neutral-700/60 text-left"
+                onClick={() => {
+                  handleNewFolder();
+                  setContextMenu({ visible: false, x: 0, y: 0 });
+                }}
+              >
+                <WinIcon name="folder-plus" size={14} />
+                <span>New Folder</span>
+              </button>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded hover:bg-neutral-200/70 dark:hover:bg-neutral-700/60 text-left"
+                onClick={() => {
+                  handleNewTextDoc();
+                  setContextMenu({ visible: false, x: 0, y: 0 });
+                }}
+              >
+                <WinIcon name="file-text" size={14} />
+                <span>New Text Document</span>
+              </button>
+              <div className="h-px bg-neutral-200 dark:bg-neutral-700 my-1" />
+              <button
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded hover:bg-neutral-200/70 dark:hover:bg-neutral-700/60 text-left"
+                onClick={() => {
+                  loadFolder();
+                  setContextMenu({ visible: false, x: 0, y: 0 });
+                }}
+              >
+                <WinIcon name="refresh" size={14} />
+                <span>Refresh</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Properties Modal */}
+      {propertiesItem && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
+          onClick={() => setPropertiesItem(null)}
+        >
+          <div
+            className="w-80 p-4 rounded-xl mica-surface border border-neutral-300 dark:border-neutral-700 win11-window-shadow text-slate-800 dark:text-slate-100"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-700">
+              <div className="flex items-center gap-2">
+                <WinIcon name={propertiesItem.icon || 'file'} size={20} />
+                <h3 className="font-semibold text-sm truncate max-w-[180px]">{propertiesItem.name}</h3>
+              </div>
+              <button
+                onClick={() => setPropertiesItem(null)}
+                className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              >
+                <WinIcon name="close" size={14} />
+              </button>
+            </div>
+
+            <div className="py-3 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-neutral-500">Type:</span>
+                <span className="font-medium">{propertiesItem.type === 'folder' ? 'File folder' : `${propertiesItem.extension?.toUpperCase()} File`}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-500">Location:</span>
+                <span className="font-medium">{fileSystem.getPath(propertiesItem.parentId)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-500">Size:</span>
+                <span className="font-medium font-mono tabular-nums">{propertiesItem.size} bytes</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-500">Modified:</span>
+                <span className="font-medium font-mono tabular-nums">{propertiesItem.updatedAt}</span>
+              </div>
+              {propertiesItem.inRecycleBin && (
+                <div className="flex justify-between text-amber-500">
+                  <span>Status:</span>
+                  <span>In Recycle Bin</span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-neutral-200 dark:border-neutral-700 flex justify-end">
+              <button
+                onClick={() => setPropertiesItem(null)}
+                className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

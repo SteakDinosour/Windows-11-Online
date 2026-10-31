@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useOS } from '../../context/OSContext';
 import { fileSystem } from '../../services/fileSystem';
-import { saveToComputer, pickFilesFromComputer } from '../../services/diskIO';
 import { soundManager } from '../../services/soundEffects';
 import { WinIcon } from '../common/WinIcon';
 import { FileSystemItem } from '../../types/os';
@@ -135,27 +134,6 @@ export const VSCodeApp: React.FC<VSCodeProps> = ({ payload }) => {
       setActiveTabId(newTab.id);
     }
     setIsChooseFileOpen(false);
-  };
-
-  // Open one or more files from the user's real PC (native "Choose file" dialog)
-  const handleOpenFromPC = async () => {
-    soundManager.playClick();
-    const picked = await pickFilesFromComputer();
-    if (picked.length === 0) return;
-    picked.forEach(f => {
-      const ext = f.name.split('.').pop()?.toLowerCase() || 'txt';
-      const created = fileSystem.createItem(f.name, 'file', 'documents', f.content, ext);
-      handleOpenFile(created);
-      addNotification('Visual Studio Code', `Opened ${f.name} from your PC`, 'VS Code');
-    });
-  };
-
-  // Save the current tab to the virtual disk AND download it to the real PC
-  const handleSaveToPC = () => {
-    if (!activeTab) return;
-    handleSaveCurrentFile();
-    saveToComputer(activeTab.name, activeTab.content);
-    addNotification('Visual Studio Code', `Downloaded ${activeTab.name} to your PC`, 'VS Code');
   };
 
   const handleCloseTab = (id: string, e: React.MouseEvent) => {
@@ -503,7 +481,7 @@ export const VSCodeApp: React.FC<VSCodeProps> = ({ payload }) => {
             onClick={handleSaveCurrentFile}
             className="px-2.5 py-1 rounded hover:bg-[#3c3c3d] text-[#cccccc] hover:text-white transition-colors font-semibold text-sky-400"
           >
-            Save (Ctrl+S)</button><button onClick={handleSaveToPC} className="px-2.5 py-1 rounded hover:bg-[#3c3c3d] text-[#cccccc] hover:text-white transition-colors font-semibold text-emerald-400">Save to PC
+            Save (Ctrl+S)
           </button>
           <button
             onClick={handleRunCode}
@@ -787,7 +765,6 @@ export const VSCodeApp: React.FC<VSCodeProps> = ({ payload }) => {
             </p>
 
             <div className="max-h-72 overflow-y-auto space-y-1 mb-4 pr-1">
-              <button onClick={handleOpenFromPC} className="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2 rounded bg-[#0e639c] hover:bg-[#1177bb] text-white text-xs font-medium"><WinIcon name="folder" size={14} />Open file from this PC…</button>
               {allDiskFiles.map(file => (
                 <button
                   key={file.id}

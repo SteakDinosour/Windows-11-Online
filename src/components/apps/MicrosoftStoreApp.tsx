@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { WinIcon } from '../common/WinIcon';
 import { soundManager } from '../../services/soundEffects';
 import { useOS } from '../../context/OSContext';
+import { AppId } from '../../types/os';
 
 interface StoreAppItem {
   id: string;
@@ -15,18 +16,6 @@ interface StoreAppItem {
   installing?: boolean;
   progress?: number;
 }
-
-// Official installer and web sources for each Store app. "Get" opens the
-// official installer (a real download); "Open" launches the app.
-const OFFICIAL_LINKS: Record<string, { download: string; web?: string }> = {
-  vscode: { download: 'https://code.visualstudio.com/Download', web: 'https://vscode.dev' },
-  spotify: { download: 'https://www.spotify.com/download/', web: 'https://open.spotify.com' },
-  figma: { download: 'https://www.figma.com/downloads/', web: 'https://www.figma.com' },
-  minecraft: { download: 'https://www.minecraft.net/en-us/download', web: 'https://www.minecraft.net' },
-  discord: { download: 'https://discord.com/download', web: 'https://discord.com/app' },
-  blender: { download: 'https://www.blender.org/download/', web: 'https://www.blender.org' },
-  vlc: { download: 'https://www.videolan.org/vlc/' },
-};
 
 export const MicrosoftStoreApp: React.FC = () => {
   const { installedAppIds, installApp, uninstallApp, openWindow } = useOS();
@@ -106,18 +95,8 @@ export const MicrosoftStoreApp: React.FC = () => {
 
   const isInstalled = (id: string) => installedAppIds.includes(id);
 
-  const openStoreApp = (id: string) => {
-    soundManager.playClick();
-    if (id === 'vscode') return openWindow('vscode');
-    if (id === 'vlc') return openWindow('mediaplayer');
-    const link = OFFICIAL_LINKS[id];
-    if (link?.web) window.open(link.web, '_blank', 'noopener');
-  };
-
   const handleInstall = async (id: string) => {
     soundManager.playClick();
-    const link = OFFICIAL_LINKS[id];
-    if (link?.download) window.open(link.download, '_blank', 'noopener');
     setApps(prev =>
       prev.map(a => (a.id === id ? { ...a, installing: true, progress: 10 } : a))
     );
@@ -294,7 +273,7 @@ export const MicrosoftStoreApp: React.FC = () => {
                       ) : installed ? (
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => openStoreApp(item.id)}
+                            onClick={() => openWindow(item.id as AppId)}
                             className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm transition-colors"
                           >
                             Open

@@ -146,7 +146,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
   const [windowsUpdate, setWindowsUpdate] = useState<WindowsUpdateInfo>(() => {
     try {
-      const saved = localStorage.getItem('win11_update_state_v2');
+      const saved = localStorage.getItem('win11_update_state_v1');
       if (saved) return JSON.parse(saved);
     } catch {}
     return {
@@ -524,6 +524,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     setIsRestarting(true);
     setTimeout(() => {
       setIsRestarting(false);
+      setIsLocked(true);
       soundManager.playStartup();
     }, 4500);
   }, [closeAllPopups]);
@@ -631,7 +632,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             progress: 100,
           };
           try {
-            localStorage.setItem('win11_update_state_v2', JSON.stringify(updated));
+            localStorage.setItem('win11_update_state_v1', JSON.stringify(updated));
           } catch {}
           return updated;
         });
@@ -655,12 +656,13 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         description: 'Your device is running the latest security patches and Windows 11 build.',
       });
       try {
-        localStorage.setItem('win11_update_state_v2', JSON.stringify({
+        localStorage.setItem('win11_update_state_v1', JSON.stringify({
           available: false,
           status: 'up_to_date',
         }));
       } catch {}
       setIsRestarting(false);
+      setIsLocked(true);
       soundManager.playStartup();
       addNotification('Windows Update', 'Updates successfully installed. Windows 11 is up to date.', 'Windows Update');
     }, 4500);

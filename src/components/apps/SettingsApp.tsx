@@ -21,6 +21,8 @@ export const SettingsApp: React.FC<SettingsProps> = ({ payload }) => {
 
   const [activeTab, setActiveTab] = useState<string>(payload?.tab || 'system');
   const [isChecking, setIsChecking] = useState<boolean>(false);
+  const [isUpdating, setIsUpdating] = useState<boolean>(false);
+  const [updateStatus, setUpdateStatus] = useState<string>(windowsUpdate.title || 'You are up to date');
 
   const navItems = [
     { id: 'system', label: 'System', icon: 'monitor' },
