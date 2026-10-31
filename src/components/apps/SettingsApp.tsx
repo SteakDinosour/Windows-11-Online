@@ -32,7 +32,7 @@ export const SettingsApp: React.FC<SettingsProps> = ({ payload }) => {
     { id: 'apps', label: 'Apps', icon: 'folder' },
     { id: 'accounts', label: 'Accounts', icon: 'user' },
     { id: 'time', label: 'Time & language', icon: 'clock' },
-    { id: 'gaming', label: 'Gaming', icon: 'presentation' },
+    { id: 'gaming', label: 'Gaming', icon: 'gamepad' },
     { id: 'accessibility', label: 'Accessibility', icon: 'user' },
     { id: 'security', label: 'Privacy & security', icon: 'shield-check' },
     { id: 'update', label: 'Windows Update', icon: 'refresh', badge: windowsUpdate.available ? '1' : undefined },

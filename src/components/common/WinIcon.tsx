@@ -54,6 +54,7 @@ import {
   Clipboard,
   ExternalLink,
   ChevronLeft,
+  Gamepad2,
 } from 'lucide-react';
 
 interface WinIconProps {
@@ -276,6 +277,9 @@ export const WinIcon: React.FC<WinIconProps> = ({ name, className = '', size = 2
     scissors: Scissors,
     clipboard: Clipboard,
     'external-link': ExternalLink,
+    gamepad: Gamepad2,
+    joystick: Gamepad2,
+    gaming: Gamepad2,
   };
 
   const Component = map[name] || File;
